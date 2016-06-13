@@ -231,44 +231,52 @@ module Crystal
     private def create_llvm_struct_type(type : CUnionType)
       LLVM::Type.struct(type.llvm_name) do |a_struct|
         @struct_cache[type] = a_struct
+        union_body(type.vars)
+      end
+    end
 
-        max_size = 0
-        max_align = 0
-        max_align_type = nil
-        max_align_type_size = 0
+    private def union_body(vars)
+      max_size = 0
+      max_align = 0
+      max_align_type = nil
+      max_align_type_size = 0
 
-        type.vars.each do |name, var|
-          var_type = var.type
-          unless var_type.void?
-            llvm_type = llvm_embedded_c_type(var_type)
-            size = size_of(llvm_type)
-            align = align_of(llvm_type)
+      vars.each do |name, var|
+        var_type = var.type
+        unless var_type.void?
+          llvm_type = llvm_embedded_c_type(var_type)
+          size = size_of(llvm_type)
+          align = align_of(llvm_type)
 
-            if size > max_size
-              max_size = size
-            end
+          if size > max_size
+            max_size = size
+          end
 
-            if align > max_align
-              max_align = align
-              max_align_type = llvm_type
-              max_align_type_size = size
-            end
+          if align > max_align
+            max_align = align
+            max_align_type = llvm_type
+            max_align_type_size = size
           end
         end
-
-        max_align_type = max_align_type.not_nil!
-        union_fill = [max_align_type] of LLVM::Type
-        if max_align_type_size < max_size
-          union_fill << LLVM::Int8.array(max_size - max_align_type_size)
-        end
-
-        union_fill
       end
+
+      max_align_type = max_align_type.not_nil!
+      union_fill = [max_align_type] of LLVM::Type
+      if max_align_type_size < max_size
+        union_fill << LLVM::Int8.array(max_size - max_align_type_size)
+      end
+
+      union_fill
     end
 
     private def create_llvm_struct_type(type : InstanceVarContainer)
       LLVM::Type.struct(type.llvm_name) do |a_struct|
         @struct_cache[type] = a_struct
+
+        extern = type.extern
+        if extern && extern.union
+          next union_body(type.all_instance_vars)
+        end
 
         ivars = type.all_instance_vars
         ivars_size = ivars.size
@@ -285,7 +293,11 @@ module Crystal
 
         ivars.each do |name, ivar|
           if ivar_type = ivar.type?
-            element_types.push llvm_embedded_type(ivar_type)
+            if extern
+              element_types.push llvm_embedded_c_type(ivar_type)
+            else
+              element_types.push llvm_embedded_type(ivar_type)
+            end
           else
             # This is for untyped fields: we don't really care how to represent them in memory.
             element_types.push LLVM::Int8
