@@ -1854,50 +1854,59 @@ describe "Semantic: instance var" do
       ),
       "Can't infer the type of instance variable '@x' of Foo"
   end
-
-  it "errors if declaring instance var and turns out to be nilable" do
-    assert_error %(
-      class Foo
-        @x : Int32
-      end
-      ),
-      "instance variable '@x' of Foo was not initialized in all of the 'initialize' methods, rendering it nilable"
-  end
-
-  it "doesn't if declaring nilable instance var and turns out to be nilable" do
-    assert_type(%(
-      class Foo
-        @x : Int32?
-
-        def x
-          @x
+  describe "nillable instance variables" do
+    Spec.before_each do
+      @@instance_var_not_initialized_in_all =<<-MSG
+      instance variable '@x' of Foo(T) was not initialized directly in all of the 'initialize' methods, rendering it nilable. 
+        
+        Instance variables must be initialized directly in the 'initialize'
+        methods or outside at the top level. The initialization will not be
+        detected if performed in a method called from the initialize methods.
+      MSG
+    end
+    it "errors if declaring instance var and turns out to be nilable" do
+      assert_error %(
+        class Foo
+          @x : Int32
         end
-      end
+        ),
+        "instance variable '@x' of Foo was not initialized in all of the 'initialize' methods, rendering it nilable"
+    end
 
-      Foo.new.x
-      )) { nilable int32 }
-  end
+    it "doesn't if declaring nilable instance var and turns out to be nilable" do
+      assert_type(%(
+        class Foo
+          @x : Int32?
 
-  it "errors if declaring instance var and turns out to be nilable, in generic type" do
-    assert_error %(
-      class Foo(T)
-        @x : T
-      end
-      ),
-      "instance variable '@x' of Foo(T) was not initialized in all of the 'initialize' methods, rendering it nilable"
-  end
+          def x
+            @x
+          end
+        end
 
-  it "errors if declaring instance var and turns out to be nilable, in generic module type" do
-    assert_error %(
-      module Moo(T)
-        @x : T
-      end
+        Foo.new.x
+        )) { nilable int32 }
+    end
+    it "errors if declaring instance var and turns out to be nilable, in generic type" do
+      assert_error %(
+        class Foo(T)
+          @x : T
+        end
+        ),
+        @@instance_var_not_initialized_in_all
+    end
 
-      class Foo
-        include Moo(Int32)
-      end
-      ),
-      "instance variable '@x' of Foo was not initialized in all of the 'initialize' methods, rendering it nilable"
+    it "errors if declaring instance var and turns out to be nilable, in generic module type" do
+      assert_error %(
+        module Moo(T)
+          @x : T
+        end
+
+        class Foo
+          include Moo(Int32)
+        end
+        ),
+        "instance variable '@x' of Foo was not initialized in all of the 'initialize' methods, rendering it nilable"
+    end
   end
 
   it "doesn't error if declaring instance var and doesn't out to be nilable, in generic module type" do
